@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Woodfinder — Free Firewood Near You</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+  <nav class="navbar navbar-dark bg-success">
+    <div class="container">
+      <span class="navbar-brand mb-0 h1">
+        <i class="bi bi-tree-fill me-2"></i>310 Woodfinder
+      </span>
+      <span class="text-white-50 small">Free firewood from Kijiji</span>
+    </div>
+  </nav>
+
+  <main class="container py-4">
+    <section class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h2 class="h5 card-title">Search</h2>
+        <form id="search-form">
+          <div class="row g-3 align-items-end mb-3">
+            <div class="col-md-8 col-lg-6">
+              <label for="keywords" class="form-label">Keywords</label>
+              <input type="text" class="form-control" id="keywords" value="free firewood">
+            </div>
+          </div>
+          <div class="row g-3 align-items-end mb-3">
+            <div class="col-md-8 col-lg-6">
+              <label for="address" class="form-label">Current Location:</label>
+              <div class="input-group">
+                <input type="text" class="form-control" id="address" placeholder="Postal code or city">
+                <button type="button" class="btn btn-outline-secondary" id="btn-geo" title="Use my location">
+                  <i class="bi bi-geo-alt-fill"></i>
+                </button>
+              </div>
+              <div class="form-text" id="coords-display">Use geolocation or enter an address</div>
+            </div>
+          </div>
+          <div class="row g-3 align-items-end">
+            <div class="col-6 col-md-3 col-lg-2">
+              <label for="radius" class="form-label">Radius (km)</label>
+              <input type="number" class="form-control" id="radius" value="25" min="5" max="100" step="5">
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+              <label for="date-listed" class="form-label">Date listed</label>
+              <select class="form-select" id="date-listed">
+                <option value="24h">Last 24 hours</option>
+                <option value="7d" selected>Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+              </select>
+            </div>
+            <div class="col-md-2 col-lg-2">
+              <button type="submit" class="btn btn-success w-100" id="btn-search">
+                <span class="search-label">Search Kijiji</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <div id="alert-area"></div>
+
+    <section class="card shadow-sm mb-4 d-none" id="results-section">
+      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span id="results-count" class="fw-semibold">0 listings</span>
+        <span class="text-muted small">Click column headers to sort</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:3rem">
+                <input type="checkbox" class="form-check-input" id="select-all-check"
+                  aria-label="Select all routable listings" disabled>
+              </th>
+              <th style="width:4rem"></th>
+              <th>Listing</th>
+              <th class="sortable" data-sort="date" role="button">Posted <i class="bi bi-chevron-expand sort-icon"></i></th>
+              <th class="sortable" data-sort="distance" role="button">Distance <i class="bi bi-chevron-expand sort-icon"></i></th>
+              <th class="sortable" data-sort="location" role="button">Location <i class="bi bi-chevron-expand sort-icon"></i></th>
+            </tr>
+          </thead>
+          <tbody id="listings-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card shadow-sm route-panel d-none" id="route-section">
+      <div class="card-body">
+        <h2 class="h5">Pickup route</h2>
+        <p class="text-muted small mb-2">
+          <span id="selected-count">0</span> selected —
+          route order is approximate. Verify listings on Kijiji before driving.
+        </p>
+        <p class="alert alert-warning py-2 small d-none" id="waypoint-warning">
+          Google Maps on mobile supports at most 3 stops. Use desktop or split your route for more stops.
+        </p>
+        <ol id="route-stops" class="mb-3"></ol>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="button" class="btn btn-primary" id="btn-google" disabled>
+            <i class="bi bi-map me-1"></i>Open in Google Maps
+          </button>
+          <button type="button" class="btn btn-secondary" id="btn-apple" disabled>
+            <i class="bi bi-apple me-1"></i>Open in Apple Maps
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="text-center text-muted small py-4">
+  Personal use only. Data from Kijiji. Not affiliated with Kijiji or Facebook.
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
