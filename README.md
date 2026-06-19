@@ -50,7 +50,7 @@ Woodfinder needs a Node server and Playwright (Chromium). Use [Render](https://r
 ### Notes
 
 - **Free tier:** the service spins down after inactivity; the first search after idle can take 30–60 seconds (cold start + Kijiji scrape).
-- **First search** may take 1–2 minutes while Playwright loads Kijiji.
+- **First search** may take 20–40 seconds while Playwright loads Kijiji; repeat searches within 15 minutes use cache and are much faster.
 - Render sets `PORT` automatically; do not hardcode it.
 - Remove or pause the Netlify site for this project to avoid confusion.
 
@@ -60,8 +60,10 @@ Woodfinder needs a Node server and Playwright (Chromium). Use [Render](https://r
 |----------|---------|-------------|
 | `PORT` | 3000 | Server port |
 | `SEARCH_KEYWORDS` | free firewood | Default search keywords |
-| `MAX_SEARCH_PAGES` | 3 | Max Kijiji result pages per search |
-| `CACHE_TTL_MINUTES` | 10 | Cache duration for search results |
+| `MAX_SEARCH_PAGES` | 1 | Max Kijiji result pages per search |
+| `MAX_DETAIL_FETCHES` | 0 | Extra listing page loads for missing coords (slow) |
+| `CACHE_TTL_MINUTES` | 15 | Cache duration for search results |
+| `ENABLE_GEOCODE_FALLBACK` | false | Geocode listing addresses when coords missing (slow) |
 | `NOMINATIM_USER_AGENT` | Woodfinder/1.0 | Required by Nominatim usage policy |
 | `PLAYWRIGHT_HEADLESS` | true | Set `false` to debug scraping |
 

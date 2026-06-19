@@ -16,10 +16,12 @@ const UI = {
     this.el('alert-area').innerHTML = '';
   },
 
-  setSearching(loading) {
+  setSearching(loading, message) {
     const btn = this.el('btn-search');
     btn.disabled = loading;
-    btn.querySelector('.search-label').classList.toggle('d-none', loading);
+    const label = btn.querySelector('.search-label');
+    label.textContent = loading ? message || 'Searching…' : 'Search Kijiji';
+    label.classList.toggle('d-none', false);
     btn.querySelector('.spinner-border').classList.toggle('d-none', !loading);
   },
 
@@ -105,9 +107,10 @@ const UI = {
     });
   },
 
-  showResults(count) {
+  showResults(count, cached = false) {
     this.el('results-section').classList.remove('d-none');
-    this.el('results-count').textContent = `${count} listing${count === 1 ? '' : 's'}`;
+    const suffix = cached ? ' · cached' : '';
+    this.el('results-count').textContent = `${count} listing${count === 1 ? '' : 's'}${suffix}`;
   },
 
   updateSelectAllCheckbox(listings, selectedIds) {

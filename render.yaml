@@ -13,8 +13,10 @@ services:
       - key: SEARCH_KEYWORDS
         value: free firewood
       - key: MAX_SEARCH_PAGES
-        value: "3"
+        value: "1"
+      - key: MAX_DETAIL_FETCHES
+        value: "0"
       - key: CACHE_TTL_MINUTES
-        value: "10"
+        value: "15"
       - key: NOMINATIM_USER_AGENT
         value: Woodfinder/1.0 (https://github.com/dantasticdan/woodfinder)

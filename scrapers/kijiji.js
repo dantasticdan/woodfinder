@@ -1,10 +1,11 @@
-const { chromium } = require('playwright');
+const { newScrapeContext } = require('./browser');
 const { reverseGeocode, geocodeLocationText } = require('../services/geocode');
 const { addDistance, filterByRadius } = require('../services/distance');
 const cache = require('../services/cache');
 
-const MAX_PAGES = parseInt(process.env.MAX_SEARCH_PAGES, 10) || 3;
-const HEADLESS = process.env.PLAYWRIGHT_HEADLESS !== 'false';
+const MAX_PAGES = parseInt(process.env.MAX_SEARCH_PAGES, 10) || 1;
+const MAX_DETAIL_FETCHES = parseInt(process.env.MAX_DETAIL_FETCHES, 10) || 0;
+const ENABLE_GEOCODE_FALLBACK = process.env.ENABLE_GEOCODE_FALLBACK === 'true';
 const DEFAULT_KEYWORDS = process.env.SEARCH_KEYWORDS || 'free firewood';
 
 // Kijiji location slugs and IDs (c{categoryId}l{locationId} — category 0 = all)
@@ -157,9 +158,9 @@ async function dismissBanners(page) {
   ];
   for (const sel of selectors) {
     const btn = page.locator(sel).first();
-    if (await btn.isVisible({ timeout: 1500 }).catch(() => false)) {
+    if (await btn.isVisible({ timeout: 800 }).catch(() => false)) {
       await btn.click().catch(() => {});
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(300);
       break;
     }
   }
@@ -221,8 +222,8 @@ async function parseSearchPage(page) {
 
 async function fetchDetailMeta(page, url) {
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-    await page.waitForTimeout(800);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await page.waitForTimeout(300);
 
     return page.evaluate(() => {
       const scripts = [...document.querySelectorAll('script')].map((s) => s.textContent || '').join('\n');
@@ -281,14 +282,8 @@ async function scrapeKijiji({ lat, lng, radiusKm, keywords = DEFAULT_KEYWORDS })
 }
 
 async function runScrape({ lat, lng, radiusKm, keywords, location, geo }) {
-  let browser;
+  const context = await newScrapeContext();
   try {
-    browser = await chromium.launch({ headless: HEADLESS });
-    const context = await browser.newContext({
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      locale: 'en-CA',
-    });
     const page = await context.newPage();
 
     const rawListings = [];
@@ -302,8 +297,8 @@ async function runScrape({ lat, lng, radiusKm, keywords, location, geo }) {
       });
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await dismissBanners(page);
-      await page.waitForSelector('[data-testid="listing-link"]', { timeout: 15000 }).catch(() => {});
-      await page.waitForTimeout(2000);
+      await page.waitForSelector('[data-testid="listing-link"]', { timeout: 12000 }).catch(() => {});
+      await page.waitForTimeout(800);
       const pageListings = await parseSearchPage(page);
       if (!pageListings.length) break;
       rawListings.push(...pageListings);
@@ -313,7 +308,6 @@ async function runScrape({ lat, lng, radiusKm, keywords, location, geo }) {
     const filtered = rawListings.filter((l) => isFreeFirewood(l));
     const listings = [];
 
-    const MAX_DETAIL_FETCHES = 12;
     let detailFetches = 0;
 
     for (const raw of filtered) {
@@ -324,17 +318,16 @@ async function runScrape({ lat, lng, radiusKm, keywords, location, geo }) {
       let postedAt = raw.postedAt;
       let locationText = raw.locationText || geo.city;
 
-      if ((!coords || !postedAt) && numericId && detailFetches < MAX_DETAIL_FETCHES) {
+      if (!coords && numericId && detailFetches < MAX_DETAIL_FETCHES) {
         const detail = await fetchDetailMeta(page, raw.url);
         detailFetches += 1;
-        await page.waitForTimeout(1000);
         if (detail) {
           if (!postedAt && detail.postedAt) postedAt = detail.postedAt;
-          if (!coords?.lat && detail.lat != null) coords = { lat: detail.lat, lng: detail.lng };
+          if (detail.lat != null) coords = { lat: detail.lat, lng: detail.lng };
           if (detail.address) locationText = detail.address;
         }
       }
-      if (!coords) {
+      if (!coords && ENABLE_GEOCODE_FALLBACK) {
         const hint = extractAddressHint(raw.title, raw.locationText);
         if (hint) {
           coords = await geocodeLocationText(
@@ -362,7 +355,7 @@ async function runScrape({ lat, lng, radiusKm, keywords, location, geo }) {
     const withDistance = addDistance(listings, lat, lng);
     return filterByRadius(withDistance, radiusKm);
   } finally {
-    if (browser) await browser.close();
+    await context.close();
   }
 }
 

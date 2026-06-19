@@ -78,7 +78,7 @@ async function runSearch() {
     return;
   }
 
-  UI.setSearching(true);
+  UI.setSearching(true, 'Searching Kijiji…');
   try {
     const data = await API.search(params);
     state.listings = data.listings;
@@ -100,7 +100,7 @@ async function runSearch() {
       UI.setCoords(state.origin.lat, state.origin.lng);
     }
 
-    UI.showResults(data.listings.length);
+    UI.showResults(data.listings.length, data.meta?.cached);
     UI.updateSortHeaders(state.sort, state.sortDir);
     render();
     if (!data.listings.length) {
