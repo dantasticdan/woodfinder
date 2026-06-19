@@ -27,6 +27,33 @@ npm run dev
 
 Open http://localhost:3000
 
+## Deploy on Render
+
+Woodfinder needs a Node server and Playwright (Chromium). Use [Render](https://render.com) with the included Docker setup — static hosts like Netlify cannot run the scraper.
+
+### Option 1: Blueprint (recommended)
+
+1. Push this repo to GitHub.
+2. In Render: **New → Blueprint** and connect [dantasticdan/woodfinder](https://github.com/dantasticdan/woodfinder).
+3. Render reads [`render.yaml`](render.yaml) and creates the web service.
+4. Optional: in the service **Environment** tab, set `NOMINATIM_USER_AGENT` to include your contact email (required by [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/)).
+5. Deploy. Your app will be at `https://woodfinder.onrender.com` (or the name you choose).
+
+### Option 2: Manual web service
+
+1. **New → Web Service** → connect the GitHub repo.
+2. **Runtime:** Docker (uses [`Dockerfile`](Dockerfile)).
+3. **Branch:** `master`
+4. Add the environment variables from [`.env.example`](.env.example).
+5. Create Web Service.
+
+### Notes
+
+- **Free tier:** the service spins down after inactivity; the first search after idle can take 30–60 seconds (cold start + Kijiji scrape).
+- **First search** may take 1–2 minutes while Playwright loads Kijiji.
+- Render sets `PORT` automatically; do not hardcode it.
+- Remove or pause the Netlify site for this project to avoid confusion.
+
 ## Environment
 
 | Variable | Default | Description |
