@@ -271,23 +271,44 @@ function extractAddressHint(title, locationText) {
   return locationText;
 }
 
-async function scrapeKijiji({ lat, lng, radiusKm, keywords = DEFAULT_KEYWORDS }) {
+async function scrapeKijiji({ lat, lng, radiusKm, keywords = DEFAULT_KEYWORDS, onProgress }) {
+  onProgress?.({ phase: 'geocoding', percent: 3, message: 'Resolving search area…' });
   const geo = await reverseGeocode(lat, lng);
   const location = resolveLocation(geo.city);
   const cacheKey = cache.makeKey(['kijiji', lat, lng, radiusKm, keywords, location.slug]);
-  const { value, cached } = await cache.getOrSet(cacheKey, () =>
-    withLock(() => runScrape({ lat, lng, radiusKm, keywords, location, geo }))
+
+  const cachedListings = cache.get(cacheKey);
+  if (cachedListings) {
+    onProgress?.({ phase: 'cached', percent: 100, message: 'Using cached results…' });
+    return { listings: cachedListings, meta: { cached: true, radiusKm, location: geo.city || location.slug } };
+  }
+
+  onProgress?.({ phase: 'starting', percent: 8, message: 'Connecting to Kijiji…' });
+  const value = await withLock(() =>
+    runScrape({ lat, lng, radiusKm, keywords, location, geo, onProgress })
   );
-  return { listings: value, meta: { cached, radiusKm, location: geo.city || location.slug } };
+  cache.set(cacheKey, value);
+  onProgress?.({ phase: 'done', percent: 100, message: 'Search complete' });
+  return { listings: value, meta: { cached: false, radiusKm, location: geo.city || location.slug } };
 }
 
-async function runScrape({ lat, lng, radiusKm, keywords, location, geo }) {
+async function runScrape({ lat, lng, radiusKm, keywords, location, geo, onProgress }) {
   const context = await newScrapeContext();
   try {
+    onProgress?.({ phase: 'browser', percent: 10, message: 'Loading Kijiji…' });
     const page = await context.newPage();
 
     const rawListings = [];
     for (let p = 1; p <= MAX_PAGES; p++) {
+      const pageStart = Math.round(12 + ((p - 1) / MAX_PAGES) * 58);
+      onProgress?.({
+        phase: 'page',
+        page: p,
+        totalPages: MAX_PAGES,
+        percent: pageStart,
+        message: `Fetching page ${p} of ${MAX_PAGES}…`,
+      });
+
       const url = buildSearchUrl({
         keywords,
         radiusKm,
@@ -300,17 +321,39 @@ async function runScrape({ lat, lng, radiusKm, keywords, location, geo }) {
       await page.waitForSelector('[data-testid="listing-link"]', { timeout: 12000 }).catch(() => {});
       await page.waitForTimeout(800);
       const pageListings = await parseSearchPage(page);
+
+      const pageEnd = Math.round(12 + (p / MAX_PAGES) * 58);
+      onProgress?.({
+        phase: 'page-done',
+        page: p,
+        totalPages: MAX_PAGES,
+        percent: pageEnd,
+        message: pageListings.length
+          ? `Found ${pageListings.length} listings on page ${p}…`
+          : `No listings on page ${p}…`,
+      });
+
       if (!pageListings.length) break;
       rawListings.push(...pageListings);
       if (pageListings.length < 20) break;
     }
 
+    onProgress?.({ phase: 'processing', percent: 75, message: 'Filtering free firewood listings…' });
     const filtered = rawListings.filter((l) => isFreeFirewood(l));
     const listings = [];
 
     let detailFetches = 0;
 
-    for (const raw of filtered) {
+    for (let i = 0; i < filtered.length; i++) {
+      const raw = filtered[i];
+      if (MAX_DETAIL_FETCHES > 0 && filtered.length > 0) {
+        onProgress?.({
+          phase: 'details',
+          percent: Math.round(75 + ((i + 1) / filtered.length) * 15),
+          message: `Processing listing ${i + 1} of ${filtered.length}…`,
+        });
+      }
+
       const numericId = extractListingId(raw.url);
       const id = numericId ? `kijiji-${numericId}` : `kijiji-${Buffer.from(raw.url).toString('base64').slice(0, 12)}`;
 
@@ -352,6 +395,7 @@ async function runScrape({ lat, lng, radiusKm, keywords, location, geo }) {
       });
     }
 
+    onProgress?.({ phase: 'distance', percent: 92, message: 'Calculating distances…' });
     const withDistance = addDistance(listings, lat, lng);
     return filterByRadius(withDistance, radiusKm);
   } finally {

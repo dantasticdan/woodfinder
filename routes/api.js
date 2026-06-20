@@ -8,52 +8,128 @@ const router = express.Router();
 
 const searchResults = new Map();
 
-router.get('/search', async (req, res) => {
+function sendSse(res, event, data) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+async function resolveSearchCoords(req) {
+  let { lat, lng, address } = req.query;
+
+  if (address && (!lat || !lng)) {
+    const geo = await geocodeAddress(address);
+    if (!geo) {
+      return { error: 'Could not geocode that address.', status: 400 };
+    }
+    lat = geo.lat;
+    lng = geo.lng;
+  }
+
+  lat = parseFloat(lat);
+  lng = parseFloat(lng);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) {
+    return { error: 'lat and lng are required (or provide address).', status: 400 };
+  }
+
+  return { lat, lng };
+}
+
+function parseSearchOptions(req) {
+  const radiusKm = Math.min(Math.max(parseFloat(req.query.radius) || 25, 5), 100);
+  const sortBy = ['distance', 'location', 'date'].includes(req.query.sort) ? req.query.sort : 'distance';
+  const defaultDir = sortBy === 'date' ? 'desc' : 'asc';
+  const sortDir =
+    req.query.dir === 'asc' || req.query.dir === 'desc' ? req.query.dir : defaultDir;
+  const dateListed = ['24h', '7d', '30d'].includes(req.query.listed) ? req.query.listed : '7d';
+  const searchKeywords = req.query.keywords || process.env.SEARCH_KEYWORDS || 'free firewood';
+
+  return { radiusKm, sortBy, sortDir, dateListed, searchKeywords };
+}
+
+async function executeSearch(req, onProgress) {
+  const coords = await resolveSearchCoords(req);
+  if (coords.error) return coords;
+
+  const { radiusKm, sortBy, sortDir, dateListed, searchKeywords } = parseSearchOptions(req);
+  const { lat, lng } = coords;
+
+  if (onProgress && req.query.address && !req.query.lat) {
+    onProgress({ phase: 'geocoding', percent: 1, message: 'Geocoding address…' });
+  }
+
+  const { listings, meta } = await scrapeKijiji({
+    lat,
+    lng,
+    radiusKm,
+    keywords: searchKeywords,
+    onProgress,
+  });
+
+  const filtered = filterByDateListed(listings, dateListed);
+  const sorted = sortListings(filtered, sortBy, sortDir);
+  const searchId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  searchResults.set(searchId, {
+    listings: sorted,
+    origin: { lat, lng },
+    expiresAt: Date.now() + 30 * 60 * 1000,
+  });
+
+  return {
+    searchId,
+    listings: sorted,
+    meta: { ...meta, count: sorted.length, radiusKm, sort: sortBy, sortDir, dateListed, lat, lng },
+  };
+}
+
+async function streamSearch(req, res) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.write(': connected\n\n');
+  res.flushHeaders?.();
+
+  let closed = false;
+  req.on('close', () => {
+    closed = true;
+  });
+
+  const onProgress = (progress) => {
+    if (!closed) sendSse(res, 'progress', progress);
+  };
+
   try {
-    let { lat, lng, radius, keywords, sort, address, listed } = req.query;
-    const radiusKm = Math.min(Math.max(parseFloat(radius) || 25, 5), 100);
-    const sortBy = ['distance', 'location', 'date'].includes(sort) ? sort : 'distance';
-    const defaultDir = sortBy === 'date' ? 'desc' : 'asc';
-    const sortDir = req.query.dir === 'asc' || req.query.dir === 'desc' ? req.query.dir : defaultDir;
-    const dateListed = ['24h', '7d', '30d'].includes(listed) ? listed : '7d';
-    const searchKeywords = keywords || process.env.SEARCH_KEYWORDS || 'free firewood';
-
-    if (address && (!lat || !lng)) {
-      const geo = await geocodeAddress(address);
-      if (!geo) {
-        return res.status(400).json({ error: 'Could not geocode that address.' });
-      }
-      lat = geo.lat;
-      lng = geo.lng;
+    const result = await executeSearch(req, onProgress);
+    if (result.error) {
+      sendSse(res, 'search-error', { error: result.error });
+      return res.end();
     }
-
-    lat = parseFloat(lat);
-    lng = parseFloat(lng);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      return res.status(400).json({ error: 'lat and lng are required (or provide address).' });
+    if (!closed) {
+      sendSse(res, 'result', result);
+      res.end();
     }
+  } catch (err) {
+    console.error('Search error:', err);
+    if (!closed) {
+      sendSse(res, 'search-error', {
+        error: 'Failed to search Kijiji. Try again later.',
+        detail: process.env.NODE_ENV === 'development' ? err.message : undefined,
+      });
+      res.end();
+    }
+  }
+}
 
-    const { listings, meta } = await scrapeKijiji({
-      lat,
-      lng,
-      radiusKm,
-      keywords: searchKeywords,
-    });
+router.get('/search', async (req, res) => {
+  if (req.query.stream === '1') {
+    return streamSearch(req, res);
+  }
 
-    const filtered = filterByDateListed(listings, dateListed);
-    const sorted = sortListings(filtered, sortBy, sortDir);
-    const searchId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    searchResults.set(searchId, {
-      listings: sorted,
-      origin: { lat, lng },
-      expiresAt: Date.now() + 30 * 60 * 1000,
-    });
-
-    res.json({
-      searchId,
-      listings: sorted,
-      meta: { ...meta, count: sorted.length, radiusKm, sort: sortBy, sortDir, dateListed, lat, lng },
-    });
+  try {
+    const result = await executeSearch(req);
+    if (result.error) {
+      return res.status(result.status || 400).json({ error: result.error });
+    }
+    res.json(result);
   } catch (err) {
     console.error('Search error:', err);
     res.status(500).json({

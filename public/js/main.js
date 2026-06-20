@@ -79,8 +79,11 @@ async function runSearch() {
   }
 
   UI.setSearching(true, 'Searching Kijiji…');
+  UI.showSearchProgress();
   try {
-    const data = await API.search(params);
+    const data = await API.search(params, (progress) => {
+      UI.updateSearchProgress(progress.percent ?? 0, progress.message);
+    });
     state.listings = data.listings;
     state.searchId = data.searchId;
     state.origin =

@@ -23,6 +23,25 @@ const UI = {
     label.textContent = loading ? message || 'Searching…' : 'Search Kijiji';
     label.classList.toggle('d-none', false);
     btn.querySelector('.spinner-border').classList.toggle('d-none', !loading);
+    if (!loading) this.hideSearchProgress();
+  },
+
+  showSearchProgress() {
+    this.el('search-progress').classList.remove('d-none');
+    this.updateSearchProgress(0, 'Starting search…');
+  },
+
+  hideSearchProgress() {
+    this.el('search-progress').classList.add('d-none');
+  },
+
+  updateSearchProgress(percent, message) {
+    const pct = Math.min(100, Math.max(0, Math.round(percent)));
+    const bar = this.el('search-progress-bar');
+    bar.style.width = `${pct}%`;
+    bar.setAttribute('aria-valuenow', pct);
+    this.el('search-progress-percent').textContent = `${pct}%`;
+    if (message) this.el('search-progress-label').textContent = message;
   },
 
   setCoords(lat, lng, label) {
